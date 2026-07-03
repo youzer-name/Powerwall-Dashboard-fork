@@ -135,7 +135,7 @@ services:
         depends_on:
             - influxdb
         healthcheck:
-            test: curl -sf http://weather411:8676/stats > /dev/null || exit 1
+            test: wget --spider -q http://weather411:8676/stats || exit 1
             interval: 30s
             timeout: 10s
             retries: 3
