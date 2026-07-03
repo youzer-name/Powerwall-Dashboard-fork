@@ -342,6 +342,12 @@ else:
         IPASS = ""
         IDB = "powerwall"
 
+    # Resolve relative auth path to script directory so first-run and
+    # subsequent runs write/read the cache from the same location regardless
+    # of what directory the script is launched from.
+    if "/" not in TAUTH:
+        TAUTH = f"{SCRIPTPATH}/{TAUTH}"
+
     # Set other config defaults
     TDELAY = 1
     WAIT = 5
