@@ -1,5 +1,14 @@
 # RELEASE NOTES
 
+## v5.1.3 - Healthcheck Fix (wget → curl)
+
+### Bug Fix
+
+* Replace `wget` healthchecks with `curl -sf` in `powerwall.yml` for `pypowerwall` and `weather411` services. The `pypowerwall` container was switched from Alpine to `python:3.10-slim` (Debian-slim) in v5.1.2 to fix Tesla TLS fingerprint issues — but Debian-slim does not ship with `wget`, causing Docker to mark the container `(unhealthy)` even when it was serving data correctly. `curl` is already present in the Debian-slim image and is already used by the `influxdb` and `grafana` healthchecks.
+  - The `pypowerwall` healthcheck now uses the `/health` endpoint (`curl -sf http://pypowerwall:8675/health > /dev/null`).
+  - The `weather411` healthcheck uses the existing `/stats` endpoint (`curl -sf http://weather411:8676/stats > /dev/null`).
+  - Reported in [#808](https://github.com/jasonacox/Powerwall-Dashboard/issues/808). Fixed in [PR #809](https://github.com/jasonacox/Powerwall-Dashboard/pull/809).
+
 ## v5.1.2 - Proxy Docker Reliability Fixes
 
 ### pyPowerwall Update
