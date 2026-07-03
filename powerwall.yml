@@ -44,7 +44,7 @@ services:
         env_file:
             - pypowerwall.env
         healthcheck:
-            test: curl -sf http://pypowerwall:8675/api/site_info > /dev/null || exit 1
+            test: curl -sf http://pypowerwall:8675/health > /dev/null || exit 1
             interval: 30s
             timeout: 10s
             retries: 3
