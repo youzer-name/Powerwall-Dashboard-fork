@@ -551,9 +551,10 @@ def tesla_login(email):
             # Get token via native browser (macOS/Linux/Windows) or headless (Linux/Windows/SSH)
             refresh_token, detected_email, token_data = login(headless=args.headless, region=args.region)
             tesla.refresh_token(refresh_token=refresh_token)
+            print()
             print("-" * 40)
         except Exception as err:
-            sys_exit(f"ERROR: Tesla login failed - {repr(err)}")
+            sys_exit(f"\nERROR: Tesla login failed - {repr(err)}")
 
         tesla.close()
         tesla = Tesla(email, retry=retry, cache_file=TAUTH)
