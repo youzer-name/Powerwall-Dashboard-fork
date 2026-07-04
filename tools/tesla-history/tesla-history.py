@@ -52,6 +52,7 @@ import signal
 import argparse
 import configparser
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
 try:
     from dateutil.relativedelta import relativedelta
@@ -70,7 +71,7 @@ except:
 
 BUILD = "0.1.9"
 VERBOSE = True
-SCRIPTPATH = os.path.dirname(os.path.realpath(sys.argv[0]))
+SCRIPTPATH = Path(sys.argv[0]).resolve().parent
 SCRIPTNAME = os.path.basename(sys.argv[0]).split('.')[0]
 CONFIGNAME = CONFIGFILE = f"{SCRIPTNAME}.conf"
 AUTHFILE = f"{SCRIPTNAME}.auth"
@@ -183,9 +184,9 @@ CONFIGNAME = CONFIGFILE = os.getenv('TESLA_CONF', CONFIGNAME)
 
 # Load Configuration File
 config = configparser.ConfigParser(allow_no_value=True)
-if not os.path.exists(CONFIGFILE) and "/" not in CONFIGFILE:
+if not os.path.exists(CONFIGFILE) and not Path(CONFIGFILE).is_absolute():
     # Look for config file in script location if not found
-    CONFIGFILE = f"{SCRIPTPATH}/{CONFIGFILE}"
+    CONFIGFILE = str(SCRIPTPATH / CONFIGFILE)
 if args.setup and os.path.exists(CONFIGFILE):
     # Prompt user to overwrite config when running setup
     print(f"\nExisting config found '{CONFIGNAME}'\n")
@@ -208,8 +209,8 @@ if os.path.exists(CONFIGFILE):
         TAUTH = os.getenv('TESLA_AUTH', config.get('Tesla', 'AUTH'))
         TDELAY = config.getint('Tesla', 'DELAY', fallback=1)
 
-        if "/" not in TAUTH:
-            TAUTH = f"{SCRIPTPATH}/{TAUTH}"
+        if not Path(TAUTH).is_absolute():
+            TAUTH = str(SCRIPTPATH / TAUTH)
 
         # Get InfluxDB Settings
         IHOST = os.getenv('INFLUX_HOST', config.get('InfluxDB', 'HOST'))
@@ -341,6 +342,12 @@ else:
         IUSER = ""
         IPASS = ""
         IDB = "powerwall"
+
+    # Resolve relative auth path to script directory so first-run and
+    # subsequent runs write/read the cache from the same location regardless
+    # of what directory the script is launched from.
+    if not Path(TAUTH).is_absolute():
+        TAUTH = str(SCRIPTPATH / TAUTH)
 
     # Set other config defaults
     TDELAY = 1
@@ -544,9 +551,10 @@ def tesla_login(email):
             # Get token via native browser (macOS/Linux/Windows) or headless (Linux/Windows/SSH)
             refresh_token, detected_email, token_data = login(headless=args.headless, region=args.region)
             tesla.refresh_token(refresh_token=refresh_token)
+            print()
             print("-" * 40)
         except Exception as err:
-            sys_exit(f"ERROR: Tesla login failed - {repr(err)}")
+            sys_exit(f"\nERROR: Tesla login failed - {repr(err)}")
 
         tesla.close()
         tesla = Tesla(email, retry=retry, cache_file=TAUTH)
