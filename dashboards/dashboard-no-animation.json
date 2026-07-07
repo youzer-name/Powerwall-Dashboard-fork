@@ -5348,9 +5348,196 @@
       },
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "links": [],
+          "custom": {
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2C94C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter1+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FAE49D",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#27AE60",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter2+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#6FCF97",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter3"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#2D9CDB",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter3+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#56CCF2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter4"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#EB5757",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter4+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF8585",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter5"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#9B51E0",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter5+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#BB6BD9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter6"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2994A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inverter6+"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F8C98A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "fill": 0,
       "fillGradient": 0,
@@ -5392,168 +5579,169 @@
           "alias": "Inverter1",
           "datasource": {
             "type": "influxdb",
-            "uid": "${DS_INFLUXDB}"
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
           },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "measurement": "http",
+          "hide": false,
           "orderByTime": "ASC",
           "policy": "strings",
-          "refId": "A",
+          "refId": "I1b",
           "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "Inverter1"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A_Power\"+\"B_Power\"+\"C_Power\"+\"D_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter1+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I1e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E_Power\"+\"F_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
         },
         {
           "alias": "Inverter2",
           "datasource": {
             "type": "influxdb",
-            "uid": "${DS_INFLUXDB}"
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
           },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
           "hide": false,
-          "measurement": "http",
           "orderByTime": "ASC",
           "policy": "strings",
-          "refId": "B",
+          "refId": "I2b",
           "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "Inverter2"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A1_Power\"+\"B1_Power\"+\"C1_Power\"+\"D1_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter2+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I2e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E1_Power\"+\"F1_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
         },
         {
           "alias": "Inverter3",
           "datasource": {
             "type": "influxdb",
-            "uid": "${DS_INFLUXDB}"
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
           },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
           "hide": false,
-          "measurement": "http",
           "orderByTime": "ASC",
           "policy": "strings",
-          "refId": "C",
+          "refId": "I3b",
           "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "Inverter3"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A2_Power\"+\"B2_Power\"+\"C2_Power\"+\"D2_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter3+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I3e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E2_Power\"+\"F2_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
         },
         {
           "alias": "Inverter4",
           "datasource": {
             "type": "influxdb",
-            "uid": "${DS_INFLUXDB}"
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
           },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
           "hide": false,
-          "measurement": "http",
           "orderByTime": "ASC",
           "policy": "strings",
-          "refId": "D",
+          "refId": "I4b",
           "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "Inverter4"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A3_Power\"+\"B3_Power\"+\"C3_Power\"+\"D3_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter4+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I4e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E3_Power\"+\"F3_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter5",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I5b",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A4_Power\"+\"B4_Power\"+\"C4_Power\"+\"D4_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter5+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I5e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E4_Power\"+\"F4_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter6",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I6b",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"A5_Power\"+\"B5_Power\"+\"C5_Power\"+\"D5_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
+        },
+        {
+          "alias": "Inverter6+",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB_(AUTO PROVISIONED)}"
+          },
+          "hide": false,
+          "orderByTime": "ASC",
+          "policy": "strings",
+          "refId": "I6e",
+          "resultFormat": "time_series",
+          "rawQuery": true,
+          "query": "SELECT max(\"p\") FROM (SELECT \"E5_Power\"+\"F5_Power\" AS p FROM \"strings\".\"http\" WHERE $timeFilter) WHERE $timeFilter GROUP BY time($__interval) fill(null) tz('${tz:text}')"
         }
       ],
       "thresholds": [],
@@ -5588,7 +5776,8 @@
       ],
       "yaxis": {
         "align": false
-      }
+      },
+      "description": "Total power per inverter. Each inverter is shown in two segments: base strings (A\u2013D) and extended strings (E\u2013F, present on 6-string inverters only). The stacked total is the full inverter power regardless of whether E/F strings are populated."
     },
     {
       "aliasColors": {
