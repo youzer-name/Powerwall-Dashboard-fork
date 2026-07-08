@@ -1,5 +1,15 @@
 # RELEASE NOTES
 
+## v5.1.5 - Inverter Power Panel Fix (4-string & 6-string Systems)
+
+### Bug Fix
+
+* Fix the **Inverter Power** panel showing "No data" on systems with fewer than 6 strings per inverter — the majority of residential single-inverter installs. The `cq_inverters` continuous query computes `InverterN = A_Power+B_Power+C_Power+D_Power+E_Power+F_Power`; on 4-string systems, `E_Power`/`F_Power` don't exist in `raw.http`, and InfluxDB binary arithmetic returns `null` for the entire sum when any operand is missing.
+  - **Fix:** Each `InverterN` target is replaced with two `rawQuery` sub-queries — one for base strings (A–D, always present) and one for extended strings (E–F, present only on 6-string systems). Grafana stacking combines them correctly.
+  - No continuous query changes needed — historical per-string data is read directly from the `strings` retention policy as-is.
+  - Applied to `dashboard.json`, `dashboard-alt.json`, `dashboard-min-mean-max.json`, and `dashboard-no-animation.json`.
+  - Reported by @abains in [#814](https://github.com/jasonacox/Powerwall-Dashboard/issues/814). Fixed in [PR #815](https://github.com/jasonacox/Powerwall-Dashboard/pull/815).
+
 ## v5.1.4 - Weather411 Healthcheck Fix
 
 ### Bug Fix
