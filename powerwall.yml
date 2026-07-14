@@ -121,6 +121,7 @@ services:
     weather411:
         build: ./weather
         image: weather411-timescaledb:local
+        pull_policy: build
         container_name: weather411
         hostname: weather411
         restart: unless-stopped

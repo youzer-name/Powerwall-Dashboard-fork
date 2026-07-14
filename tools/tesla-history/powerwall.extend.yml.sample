@@ -4,6 +4,7 @@ services:
     tesla-history:
         build: ./tools/tesla-history
         image: tesla-history-timescaledb:local
+        pull_policy: build
         container_name: tesla-history
         hostname: tesla-history
         restart: unless-stopped
