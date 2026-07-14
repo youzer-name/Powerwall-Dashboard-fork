@@ -286,6 +286,8 @@ When writing to TimescaleDB, imported rows are tagged the same way as InfluxDB's
 
 TimescaleDB connection settings default to this stack's own `timescaledb` service (host `timescaledb`, port `5432`), and pick up credentials from `timescaledb.env` when running inside the Powerwall-Dashboard docker network -- see `powerwall.extend.yml.sample` for the environment variables used (`PGHOST`, `PGPORT`, and `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` via `env_file`). These can be overridden per-run with the `PGHOST`/`PGPORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` environment variables, same as `INFLUX_HOST`/`INFLUX_PORT` already work for InfluxDB.
 
+If you run this script directly on the host (rather than via the Docker image) with a TimescaleDB target, you also need the `psql` command line client available on `PATH`, in addition to `psycopg2-binary` -- it's used to backfill `pw_kwh_1h` after every write. If it's missing you'll see `Failed to backfill pw_kwh_1h: 'psql' command not found`; the main write already succeeded by that point, so re-running for the same date range once `psql` is installed (e.g. `apt install postgresql-client`) will backfill the gap.
+
 For more usage options, run without arguments or with the `--help` option:
 
 ```bash

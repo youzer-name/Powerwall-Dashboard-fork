@@ -1810,6 +1810,11 @@ def update_timescaledb(start, end):
             check=True,
             capture_output=not VERBOSE,
         )
+    except FileNotFoundError:
+        sys.stderr.write(" ! Failed to backfill pw_kwh_1h: 'psql' command not found.\n")
+        sys.stderr.write("   Install the PostgreSQL client (e.g. 'apt install postgresql-client') "
+                          "and re-run for this date range to backfill it.\n")
+        sys.stderr.write("   (pw_autogen_1m/pw_grid_1m/pw_pod_log were still written successfully.)\n")
     except Exception as err:
         sys.stderr.write(f" ! Failed to backfill pw_kwh_1h: {repr(err)}\n")
 

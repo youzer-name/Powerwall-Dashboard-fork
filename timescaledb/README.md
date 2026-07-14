@@ -310,6 +310,18 @@ aggregate scripts.
   `httpx`/`h2` dependencies already documented in
   `tools/tesla-history/README.md` — see that file's `pip install` line
   (kept in sync with `tools/tesla-history/Dockerfile`).
+- `tesla-history.py`'s TimescaleDB path also shells out to the `psql`
+  **binary** (not just the `psycopg2` Python module) to backfill
+  `pw_kwh_1h` after every write — see `update_timescaledb()`. If the
+  PostgreSQL client isn't installed on the host, that step fails with
+  `FileNotFoundError(2, 'No such file or directory')` while everything
+  else succeeds (the main write to `pw_autogen_1m`/`pw_grid_1m`/
+  `pw_pod_log` already happened by that point — no data is lost, only
+  the derived hourly table isn't refreshed for that range yet). Install
+  the PostgreSQL client (e.g. `apt install postgresql-client` /
+  `apk add postgresql-client`) and re-run for the same date range to
+  backfill it. The Docker image already has this — only a bare host
+  run needs it.
 
 **Grafana**
 - Right after first `docker compose up` (or a full stack restart), Grafana
