@@ -297,6 +297,20 @@ aggregate scripts.
   independent pollers — the real source of collector-to-collector divergence
   is uneven *sample count* during transients (see "autogen" decision above).
 
+**Grafana**
+- Right after first `docker compose up` (or a full stack restart), Grafana
+  can render panels with "you do not currently have a default database
+  configured for this data source" even though the datasource is correctly
+  provisioned with a database. This is Grafana serving dashboard requests
+  before the postgres datasource plugin has finished settling in against a
+  freshly-started TimescaleDB, not a real config problem — it clears on its
+  own within the container's `start_period`/first health check, no action
+  needed beyond a page refresh. Confirmed via a from-scratch isolated
+  Grafana+TimescaleDB instance: every query in `dashboard-timescaledb.json`
+  (including the ones this error was reported against) executes cleanly
+  once the datasource has settled — the dashboard JSON itself is not at
+  fault.
+
 **Timestamps / timezones**
 - `AT TIME ZONE` on an already-`timestamptz` value vs. a naive `timestamp`
   value does *opposite* things. On a naive value it attaches a zone (naive →
