@@ -85,6 +85,8 @@ from socketserver import ThreadingMixIn
 import configparser
 from influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
+import psycopg2
+import psycopg2.extras
 
 BUILD = "0.2.3"
 CLI = False
@@ -131,6 +133,19 @@ if os.path.exists(CONFIGFILE):
 
     if ITOKEN != "" and IURL == "":
         IURL = "http://%s:%s" % (IHOST, IPORT)
+
+    # TimescaleDB (optional section - absent/disabled means skip entirely)
+    if config.has_section("TimescaleDB"):
+        TSDB = config["TimescaleDB"]["ENABLE"].lower() == "yes"
+        TSHOST = config["TimescaleDB"]["HOST"]
+        TSPORT = int(config["TimescaleDB"]["PORT"])
+        TSNAME = config["TimescaleDB"]["DB"]
+        TSUSER = config["TimescaleDB"]["USER"]
+        TSPASS = config["TimescaleDB"]["PASSWORD"]
+    else:
+        TSDB = False
+        TSHOST = TSNAME = TSUSER = TSPASS = ""
+        TSPORT = 0
 else:
     # No config file - Display Error
     sys.stderr.write("Weather411 Server %s\nERROR: No config file. Fix and restart.\n" % BUILD)
@@ -160,6 +175,8 @@ serverstats['start'] = int(time.time())      # Timestamp for Start
 serverstats['clear'] = int(time.time())      # Timestamp of lLast Stats Clear
 serverstats['influxdb'] = 0
 serverstats['influxdberrors'] = 0
+serverstats['timescaledb'] = 0
+serverstats['timescaledberrors'] = 0
 
 # Global Variables
 running = True
@@ -305,6 +322,37 @@ def fetchWeather():
                             log.debug("Error writing to InfluxDB")
                             sys.stderr.write("! Error writing to InfluxDB\n")
                             serverstats['influxdberrors'] += 1
+                            pass
+
+                    if TSDB:
+                        log.debug("Writing to TimescaleDB")
+                        try:
+                            ts = datetime.utcfromtimestamp(weather["dt"])
+                            rows = []
+                            for key, val in weather.items():
+                                if val is None:
+                                    continue
+                                if isinstance(val, str):
+                                    rows.append((ts, key, None, val))
+                                else:
+                                    rows.append((ts, key, val, None))
+                            conn = psycopg2.connect(host=TSHOST, port=TSPORT,
+                                dbname=TSNAME, user=TSUSER, password=TSPASS)
+                            with conn.cursor() as cur:
+                                psycopg2.extras.execute_values(
+                                    cur,
+                                    "INSERT INTO pw_weather_log (time, metric_name, value, text_value) "
+                                    "VALUES %s ON CONFLICT (time, metric_name) DO UPDATE SET "
+                                    "value = EXCLUDED.value, text_value = EXCLUDED.text_value",
+                                    rows,
+                                )
+                            conn.commit()
+                            conn.close()
+                            serverstats['timescaledb'] += 1
+                        except:
+                            log.debug("Error writing to TimescaleDB")
+                            sys.stderr.write("! Error writing to TimescaleDB\n")
+                            serverstats['timescaledberrors'] += 1
                             pass
                 else:
                     # showing the error message
@@ -453,7 +501,9 @@ if __name__ == "__main__":
     if ITOKEN != "" or IORG != "":
         sys.stderr.write(" + InfluxDB - URL: %s, Org: %s, Token: %s\n"
             % (IURL, IORG, ITOKEN))
-    
+    sys.stderr.write(" + TimescaleDB - Enable: %s, Host: %s, Port: %s, DB: %s, User: %s\n"
+        % (TSDB, TSHOST, TSPORT, TSNAME, TSUSER))
+
     # Start threads
     sys.stderr.write("* Starting threads\n")
     thread_fetchWeather.start()

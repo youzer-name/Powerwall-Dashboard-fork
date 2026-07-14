@@ -32,3 +32,13 @@ TOKEN =
 ORG =
 URL =
 
+[TimescaleDB]
+# Record data directly in TimescaleDB (PostgreSQL) server -- bypasses
+# Telegraf polling, writes straight to pw_weather_log
+ENABLE = no
+HOST = timescaledb
+PORT = 5432
+DB = powerwall
+USER = telegraf_powerwall
+PASSWORD =
+
