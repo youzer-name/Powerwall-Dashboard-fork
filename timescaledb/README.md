@@ -297,6 +297,20 @@ aggregate scripts.
   independent pollers — the real source of collector-to-collector divergence
   is uneven *sample count* during transients (see "autogen" decision above).
 
+**Running scripts on the host (outside Docker)**
+- `timescaledb/migrate/run_all.py` (and the individual `migrate_*.py`
+  scripts) need `psycopg2-binary` installed on the host if you run them
+  directly with `python3` instead of letting `setup.sh` run them in its
+  ephemeral `python:3-alpine` container. `pip install psycopg2-binary
+  requests` first, or you'll hit `ModuleNotFoundError: No module named
+  'psycopg2'` immediately.
+- Likewise, `tools/tesla-history/tesla-history.py` run directly on the host
+  needs `psycopg2-binary` installed if `--target timescaledb`/`both` is
+  used, in addition to the `pypowerwall`/`python-dateutil`/`influxdb`/
+  `httpx`/`h2` dependencies already documented in
+  `tools/tesla-history/README.md` — see that file's `pip install` line
+  (kept in sync with `tools/tesla-history/Dockerfile`).
+
 **Grafana**
 - Right after first `docker compose up` (or a full stack restart), Grafana
   can render panels with "you do not currently have a default database
