@@ -9,6 +9,7 @@ set -e
 # Set Globals
 COMPOSE_ENV_FILE="compose.env"
 INFLUXDB_ENV_FILE="influxdb.env"
+TIMESCALEDB_ENV_FILE="timescaledb.env"
 TELEGRAF_LOCAL="telegraf.local"
 PW_ENV_FILE="pypowerwall.env"
 GF_ENV_FILE="grafana.env"
@@ -216,6 +217,83 @@ done
 if [ ! -f ${COMPOSE_ENV_FILE} ]; then
     cp "${COMPOSE_ENV_FILE}.sample" "${COMPOSE_ENV_FILE}"
 fi
+
+# Select datastore: InfluxDB, TimescaleDB, or both
+CURRENT_DATASTORE=$(grep -E "^PWD_DATASTORE=" "${COMPOSE_ENV_FILE}" 2>/dev/null | cut -d= -f2 | tr -d '"')
+if [ -z "${CURRENT_DATASTORE}" ]; then
+    CURRENT_DATASTORE="influxdb"
+fi
+echo "Select datastore:"
+echo ""
+case "${CURRENT_DATASTORE}" in
+    "influxdb,timescaledb") echo "Current: [3] Both" ;;
+    "timescaledb") echo "Current: [2] TimescaleDB" ;;
+    *) echo "Current: [1] InfluxDB" ;;
+esac
+echo ""
+echo " 1 - InfluxDB     (original datastore) - Default"
+echo " 2 - TimescaleDB  (PostgreSQL/TimescaleDB alternative backend)"
+echo " 3 - Both         (write to both datastores at once)"
+echo ""
+while :; do
+    read -r -p "Select datastore [1/2/3] (leave blank to keep current): " response
+    if [ -z "${response}" ]; then
+        NEW_DATASTORE="${CURRENT_DATASTORE}"
+        break
+    elif [ "${response}" == "1" ]; then
+        NEW_DATASTORE="influxdb"
+        break
+    elif [ "${response}" == "2" ]; then
+        NEW_DATASTORE="timescaledb"
+        break
+    elif [ "${response}" == "3" ]; then
+        NEW_DATASTORE="influxdb,timescaledb"
+        break
+    else
+        continue
+    fi
+done
+
+# Warn before dropping InfluxDB from an install that previously had it active -
+# existing data in ./influxdb is never deleted, but the container (and
+# weather411's InfluxDB writes) will stop as soon as this takes effect.
+if [[ "${CURRENT_DATASTORE}" == *"influxdb"* ]] && [[ "${NEW_DATASTORE}" != *"influxdb"* ]]; then
+    echo ""
+    echo "WARNING: You are switching away from InfluxDB."
+    echo "Your existing InfluxDB data in ./influxdb will NOT be deleted, but the"
+    echo "InfluxDB container will stop and will no longer receive new data."
+    echo "This also disables weather411's writes to InfluxDB."
+    echo ""
+    read -r -p "Continue? [y/N] " response
+    if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        echo "Cancel"
+        exit 1
+    fi
+fi
+
+DATASTORE="${NEW_DATASTORE}"
+if grep -q "^PWD_DATASTORE=" "${COMPOSE_ENV_FILE}"; then
+    sed -i.bak "s@^PWD_DATASTORE=.*@PWD_DATASTORE=\"${DATASTORE}\"@g" "${COMPOSE_ENV_FILE}"
+else
+    echo "PWD_DATASTORE=\"${DATASTORE}\"" >> "${COMPOSE_ENV_FILE}"
+fi
+if grep -q "^COMPOSE_PROFILES=" "${COMPOSE_ENV_FILE}"; then
+    sed -i.bak "s@^COMPOSE_PROFILES=.*@COMPOSE_PROFILES=\"${DATASTORE}\"@g" "${COMPOSE_ENV_FILE}"
+else
+    echo "COMPOSE_PROFILES=\"${DATASTORE}\"" >> "${COMPOSE_ENV_FILE}"
+fi
+case "${DATASTORE}" in
+    *influxdb*) INFLUXDB_ACTIVE=1 ;;
+    *) INFLUXDB_ACTIVE=0 ;;
+esac
+case "${DATASTORE}" in
+    *timescaledb*) TIMESCALEDB_ACTIVE=1 ;;
+    *) TIMESCALEDB_ACTIVE=0 ;;
+esac
+echo ""
+echo "Datastore set to: ${DATASTORE}"
+echo "-----------------------------------------"
+echo ""
 
 # Check if running as non-default user (not required for Windows Git Bash)
 if ! type winpty > /dev/null 2>&1; then
@@ -630,6 +708,18 @@ if [ ! -f ${INFLUXDB_ENV_FILE} ]; then
     cp "${INFLUXDB_ENV_FILE}.sample" "${INFLUXDB_ENV_FILE}"
 fi
 
+# Create TimescaleDB env file if missing (always created, regardless of
+# datastore selection, so switching to it later needs no extra step)
+if [ ! -f ${TIMESCALEDB_ENV_FILE} ]; then
+    cp "${TIMESCALEDB_ENV_FILE}.sample" "${TIMESCALEDB_ENV_FILE}"
+    if command -v openssl > /dev/null 2>&1; then
+        TSDB_PASSWORD=$(openssl rand -hex 16)
+    else
+        TSDB_PASSWORD=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    fi
+    sed -i.bak "s@^POSTGRES_PASSWORD=.*@POSTGRES_PASSWORD=${TSDB_PASSWORD}@g" "${TIMESCALEDB_ENV_FILE}"
+fi
+
 # Create Grafana Settings if missing (required in 2.4.0)
 if [ ! -f ${GF_ENV_FILE} ]; then
     cp "${GF_ENV_FILE}.sample" "${GF_ENV_FILE}"
@@ -703,6 +793,32 @@ echo ""
 # Optional - Setup Weather Data
 if [ -f weather.sh ]; then
     ./weather.sh setup "${LAT}" "${LONG}"
+fi
+
+# Configure weather411's datastore targets to match the selected datastore(s).
+# weather411 can write directly to InfluxDB, TimescaleDB, or both, independent
+# of which containers are actually running (a disabled target is just skipped).
+if [ -f weather/weather411.conf ]; then
+    # Add a [TimescaleDB] section to configs created before this feature existed
+    if ! grep -q "^\[TimescaleDB\]" weather/weather411.conf; then
+        sed -n '/^\[TimescaleDB\]/,/^$/p' weather/weather411.conf.sample >> weather/weather411.conf
+    fi
+    TSDB_USER=$(grep -E "^POSTGRES_USER=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_PASS=$(grep -E "^POSTGRES_PASSWORD=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_DB=$(grep -E "^POSTGRES_DB=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    awk -v influx_enable="$([ ${INFLUXDB_ACTIVE} -eq 1 ] && echo yes || echo no)" \
+        -v tsdb_enable="$([ ${TIMESCALEDB_ACTIVE} -eq 1 ] && echo yes || echo no)" \
+        -v user="${TSDB_USER}" -v pass="${TSDB_PASS}" -v db="${TSDB_DB}" '
+        /^\[InfluxDB\]/ { section="influxdb" }
+        /^\[TimescaleDB\]/ { section="timescaledb" }
+        /^\[/ && !/^\[InfluxDB\]/ && !/^\[TimescaleDB\]/ { section="" }
+        section=="influxdb" && /^ENABLE =/ { $0 = "ENABLE = " influx_enable }
+        section=="timescaledb" && /^ENABLE =/ { $0 = "ENABLE = " tsdb_enable }
+        section=="timescaledb" && /^DB =/ { $0 = "DB = " db }
+        section=="timescaledb" && /^USER =/ { $0 = "USER = " user }
+        section=="timescaledb" && /^PASSWORD =/ { $0 = "PASSWORD = " pass }
+        { print }
+    ' weather/weather411.conf > weather/weather411.conf.new && mv weather/weather411.conf.new weather/weather411.conf
 fi
 
 if [ -f grafana/sunandmoon-template.yml ]; then
@@ -799,26 +915,67 @@ if [ "${config}" == "FleetAPI Cloud" ]; then
 fi
 
 # Set up Influx
-echo "Waiting for InfluxDB to start..."
-until running http://localhost:8086/ping 204 2>/dev/null; do
-    printf '.'
-    sleep 5
-done
-echo " up!"
-sleep 2
-echo "Setup InfluxDB Data... ('already exist' errors harmless)"
-docker exec --tty influxdb sh -c "influx -import -path=/var/lib/influxdb/influxdb.sql"
-sleep 2
-# Execute Run-Once queries for initial setup.
-cd influxdb
-for f in run-once*.sql; do
-    if [ ! -f "${f}.done" ]; then
-        echo "Executing single run query $f file..."
-        docker exec --tty influxdb sh -c "influx -import -path=/var/lib/influxdb/${f}"
-        echo "OK" > "${f}.done"
+if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
+    echo "Waiting for InfluxDB to start..."
+    until running http://localhost:8086/ping 204 2>/dev/null; do
+        printf '.'
+        sleep 5
+    done
+    echo " up!"
+    sleep 2
+    echo "Setup InfluxDB Data... ('already exist' errors harmless)"
+    docker exec --tty influxdb sh -c "influx -import -path=/var/lib/influxdb/influxdb.sql"
+    sleep 2
+    # Execute Run-Once queries for initial setup.
+    cd influxdb
+    for f in run-once*.sql; do
+        if [ ! -f "${f}.done" ]; then
+            echo "Executing single run query $f file..."
+            docker exec --tty influxdb sh -c "influx -import -path=/var/lib/influxdb/${f}"
+            echo "OK" > "${f}.done"
+        fi
+    done
+    cd ..
+fi
+
+# Set up TimescaleDB
+if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
+    echo "Waiting for TimescaleDB to start..."
+    until docker exec timescaledb pg_isready -U "$(grep -E '^POSTGRES_USER=' ${TIMESCALEDB_ENV_FILE} | cut -d= -f2)" > /dev/null 2>&1; do
+        printf '.'
+        sleep 5
+    done
+    echo " up!"
+    sleep 2
+    echo "Setup TimescaleDB schema... ('already exists' notices are harmless)"
+    docker cp timescaledb/schema.sql timescaledb:/schema.sql
+    docker exec -u postgres timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /schema.sql'
+
+    echo ""
+    echo "TimescaleDB can optionally import your existing InfluxDB history."
+    if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
+        read -r -p "Migrate existing InfluxDB data into TimescaleDB now? [y/N] " response
+    else
+        echo "(Your InfluxDB container isn't part of this run, but if you have"
+        echo " existing InfluxDB data on this host it can still be migrated.)"
+        read -r -p "Migrate existing InfluxDB data into TimescaleDB now? [y/N] " response
     fi
-done
-cd ..
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        NETWORK=$(docker inspect timescaledb --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+        echo "Running migration (this can take a while for large histories)..."
+        docker run --rm -it \
+            --network "${NETWORK}" \
+            -v "$(pwd)/timescaledb:/timescaledb:ro" \
+            --env-file "${TIMESCALEDB_ENV_FILE}" \
+            -e PGHOST=timescaledb \
+            -e PGPORT=5432 \
+            -e INFLUX_HOST=influxdb \
+            -e INFLUX_PORT=8086 \
+            -e TZ="$(cat tz)" \
+            python:3-alpine sh -c "apk add --no-cache --quiet postgresql-client && pip install --quiet requests psycopg2-binary && python3 /timescaledb/migrate/run_all.py"
+        echo "Migration complete."
+    fi
+fi
 
 # Restart weather411 to force a sample
 if [ -f weather/weather411.conf ]; then
@@ -840,21 +997,58 @@ Open Grafana at http://localhost:9000/ ... use admin/admin for login.
 
 To complete *Grafana Setup*:
 
-* From 'Dashboard/New', select 'Import dashboard', click "Upload dashboard JSON file", 
+EOF
+
+if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
+cat << EOF
+* From 'Dashboard/New', select 'Import dashboard', click "Upload dashboard JSON file",
   browse to ${PWD}/dashboards and upload ${DASHBOARD}.
 * For InfluxDB select "InfluxDB (Auto provisioned)" dropdown.
 * For Sun and Moon select "Sun and Moon (Auto provisioned)" dropdown.
 * Click "Import" button.
 
-NOTE: The datasources for InfluxDB and SunAndMoon are already configured.
+EOF
+fi
+
+if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
+cat << EOF
+* From 'Dashboard/New', select 'Import dashboard', click "Upload dashboard JSON file",
+  browse to ${PWD}/dashboards and upload 'dashboard-timescaledb.json'.
+* For TimescaleDB select "TimescaleDB (auto provisioned)" dropdown.
+* For Sun and Moon select "Sun and Moon (Auto provisioned)" dropdown.
+* Click "Import" button.
+
+EOF
+fi
+
+cat << EOF
+NOTE: The datasources above are already configured.
 If you need to modify them via Configuration\Data Sources:
 
+EOF
+
+if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
+cat << EOF
 * InfluxDB
   - URL: 'http://influxdb:8086'
   - Database: 'powerwall'
   - Min time interval: '5s'
   - Click "Save & test" button
 
+EOF
+fi
+
+if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
+cat << EOF
+* TimescaleDB
+  - Host: 'timescaledb:5432'
+  - Database: 'powerwall' (see timescaledb.env)
+  - Click "Save & test" button
+
+EOF
+fi
+
+cat << EOF
 * Sun and Moon
   - Enter your latitude and longitude (tool here: https://bit.ly/3wYNaI1 )
   - Click "Save & test" button
