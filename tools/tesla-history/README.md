@@ -61,7 +61,10 @@ Timezone (e.g. America/Los_Angeles): Australia/Sydney
 Config saved to 'tesla-history.conf'
 ```
 
-If you select TimescaleDB (options 2 or 3), you'll also be prompted for the TimescaleDB (PostgreSQL) connection details -- when running inside the Powerwall-Dashboard stack via docker, the defaults (`timescaledb` host, port `5432`) and credentials from `timescaledb.env` already work, so these prompts can usually be accepted as-is.
+If you select TimescaleDB (options 2 or 3), you'll also be prompted for the TimescaleDB (PostgreSQL) connection details -- host/port/database/user can be accepted as-is (`timescaledb`/`5432`/`powerwall`/`telegraf_powerwall`), but the **password prompt has no default to fall back on during this interactive setup** -- you need to supply it yourself.
+
+- **Running inside the docker container** (`docker exec -it tesla-history python3 tesla-history.py --login`): it's fine to leave the password prompt blank here -- the container already gets `POSTGRES_PASSWORD` from `timescaledb.env` via `env_file` (see `powerwall.extend.yml.sample`), and that environment variable overrides whatever's in the config file on every subsequent run, so a blank value in the config itself doesn't matter.
+- **Running directly on the host** (bare `python3 tesla-history.py --login`, no docker): there's no environment variable to fall back on, so you must enter the real password at the prompt. It's the auto-generated value in `timescaledb.env` at the repo root (`../../timescaledb.env` relative to this `tools/tesla-history/` directory) -- look for `POSTGRES_PASSWORD=` in that file. This is the same random password `setup.sh` generated when TimescaleDB was first set up, not a fixed default.
 
 In most cases, the `[default]` values will be correct and can be accepted by pressing Enter, however these can be changed if you have a custom setup.
 
