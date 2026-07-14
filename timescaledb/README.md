@@ -385,9 +385,13 @@ have — not `aggregate_strings_log.sql`'s own precomputed `InverterN` total
 (sum of all 6), which is also written to `pw_strings_log` but currently
 unused by any panel.
 
-## Deliberately out of scope
+## Version stat panel
 
-- **"Powerwall Dashboard" version stat panel** — sourced from an
-  `inputs.exec` block running `ver.sh`, writing to its own InfluxDB
-  measurement. Not duplicated in `telegraf-timescale.conf`; no TimescaleDB
-  equivalent panel exists yet.
+The "Powerwall Dashboard" stat panel (bottom of the dashboard) is sourced the
+same way as stock InfluxDB: `telegraf-timescale.conf` runs the same
+`inputs.exec` block calling `ver.sh` (mounted read-only into the
+`telegraf-timescale` service, same as the stock `telegraf` service), writing
+into its own lazily-created `powerwall_dashboard` table. That table is
+hypertabled/retained by `bootstrap_raw_tables.sql` the same way as `http` and
+`alerts` (3-day retention — a fresh row lands every Telegraf interval, so the
+"last value" query never actually needs the history).

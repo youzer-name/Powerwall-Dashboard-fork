@@ -179,6 +179,14 @@ services:
               source: ./telegraf-timescale.conf
               target: /etc/telegraf/telegraf.conf
               read_only: true
+            - type: bind
+              source: ./VERSION
+              target: /etc/telegraf/VERSION
+              read_only: true
+            - type: bind
+              source: ./ver.sh
+              target: /etc/telegraf/ver.sh
+              read_only: true
         env_file:
             - timescaledb.env
         depends_on:

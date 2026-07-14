@@ -1,7 +1,9 @@
--- Raw ingestion tables (http, alerts) are created lazily by Telegraf's
--- outputs.postgresql on its first write -- they don't exist yet on a fresh
--- install, so they can't be set up in timescaledb/schema.sql. (weather is not
--- one of these -- weather411 writes pw_weather_log directly, no raw table or
+-- Raw ingestion tables (http, alerts, powerwall_dashboard) are created lazily
+-- by Telegraf's outputs.postgresql on its first write -- they don't exist yet
+-- on a fresh install, so they can't be set up in timescaledb/schema.sql.
+-- powerwall_dashboard is the ver.sh version-stat table (see
+-- telegraf-timescale.conf's inputs.exec block). (weather is not one of
+-- these -- weather411 writes pw_weather_log directly, no raw table or
 -- Telegraf polling involved, see weather/server.py.)
 -- Normally telegraf-timescale.conf's create_templates already makes each one
 -- a hypertable at the moment Telegraf creates it (see that file), so the
@@ -14,7 +16,7 @@ DO $$
 DECLARE
   tbl text;
 BEGIN
-  FOREACH tbl IN ARRAY ARRAY['http', 'alerts'] LOOP
+  FOREACH tbl IN ARRAY ARRAY['http', 'alerts', 'powerwall_dashboard'] LOOP
     IF EXISTS (
       SELECT 1 FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name = tbl
