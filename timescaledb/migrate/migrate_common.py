@@ -140,11 +140,22 @@ def mark_progress(cur, source_measurement, year, month, status, row_count=None):
 
 
 def insert_wide(cur, dest_table, columns, rows):
-    """rows: list of tuples matching (time, *columns), upserted by time."""
+    """rows: list of tuples matching (time, *columns), upserted by time.
+
+    Fill-gaps-only, same as tesla-history.py's write_timescaledb(): COALESCE
+    keeps the existing value on conflict rather than overwriting it. This
+    table can already have live-ingested data for the same timestamps the
+    migration is walking back over (e.g. if TimescaleDB was set up and has
+    been running for a while before a user goes back to migrate older
+    InfluxDB history) -- a plain EXCLUDED.col overwrite would silently
+    replace that live data with the InfluxDB-derived value, making a re-run
+    of the migration unsafe. This makes it safe to run at any time, not just
+    during initial setup.
+    """
     if not rows:
         return
     cols = ["time"] + columns
-    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in columns)
+    set_clause = ", ".join(f"{c} = COALESCE({dest_table}.{c}, EXCLUDED.{c})" for c in columns)
     sql = (
         f"INSERT INTO {dest_table} ({','.join(cols)}) VALUES %s "
         f"ON CONFLICT (time) DO UPDATE SET {set_clause}"
