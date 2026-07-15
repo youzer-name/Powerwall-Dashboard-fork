@@ -45,6 +45,10 @@ def get_config():
         "influx_user": influx_user,
         "influx_password": influx_password,
         "pg_dsn": f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_password}",
+        # Identifies which InfluxDB instance this run is reading from, so a
+        # migration checkpoint from one source is never mistaken for "done"
+        # against a different source (see migration_progress in schema.sql).
+        "source_key": f"{influx_host}:{influx_port}/{influx_db}",
     }
 
 
@@ -118,24 +122,24 @@ def find_earliest_month(config, source_measurement):
     return ts.year, ts.month
 
 
-def already_done(cur, source_measurement, year, month):
+def already_done(cur, source_measurement, source_key, year, month):
     cur.execute(
-        "SELECT status FROM migration_progress WHERE source_measurement=%s AND year=%s AND month=%s",
-        (source_measurement, year, month),
+        "SELECT status FROM migration_progress WHERE source_measurement=%s AND source=%s AND year=%s AND month=%s",
+        (source_measurement, source_key, year, month),
     )
     row = cur.fetchone()
     return row is not None and row[0] == "done"
 
 
-def mark_progress(cur, source_measurement, year, month, status, row_count=None):
+def mark_progress(cur, source_measurement, source_key, year, month, status, row_count=None):
     cur.execute(
         """
-        INSERT INTO migration_progress (source_measurement, year, month, status, row_count, migrated_at)
-        VALUES (%s, %s, %s, %s, %s, now())
-        ON CONFLICT (source_measurement, year, month) DO UPDATE SET
+        INSERT INTO migration_progress (source_measurement, source, year, month, status, row_count, migrated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, now())
+        ON CONFLICT (source_measurement, source, year, month) DO UPDATE SET
           status = EXCLUDED.status, row_count = EXCLUDED.row_count, migrated_at = EXCLUDED.migrated_at
         """,
-        (source_measurement, year, month, status, row_count),
+        (source_measurement, source_key, year, month, status, row_count),
     )
 
 
@@ -185,7 +189,7 @@ def insert_narrow_text(cur, dest_table, rows):
     psycopg2.extras.execute_values(cur, sql, rows, page_size=5000)
 
 
-def run_migration(pg_dsn, source_measurement, earliest_year, earliest_month, fetch_and_pivot, insert_rows):
+def run_migration(pg_dsn, source_measurement, source_key, earliest_year, earliest_month, fetch_and_pivot, insert_rows):
     """
     Generic backward-walking, checkpointed migration driver shared by every
     migrate_*.py script. fetch_and_pivot(year, month) -> rows;
@@ -196,7 +200,7 @@ def run_migration(pg_dsn, source_measurement, earliest_year, earliest_month, fet
 
     for year, month in month_chunks_descending(earliest_year, earliest_month):
         with conn.cursor() as cur:
-            if already_done(cur, source_measurement, year, month):
+            if already_done(cur, source_measurement, source_key, year, month):
                 print(f"[skip] {year}-{month:02d} already migrated")
                 continue
 
@@ -207,14 +211,14 @@ def run_migration(pg_dsn, source_measurement, earliest_year, earliest_month, fet
 
             with conn.cursor() as cur:
                 insert_rows(cur, rows)
-                mark_progress(cur, source_measurement, year, month, "done", len(rows))
+                mark_progress(cur, source_measurement, source_key, year, month, "done", len(rows))
             conn.commit()
             print(f"[done]  {year}-{month:02d}")
 
         except Exception as e:
             conn.rollback()
             with conn.cursor() as cur:
-                mark_progress(cur, source_measurement, year, month, "failed")
+                mark_progress(cur, source_measurement, source_key, year, month, "failed")
             conn.commit()
             print(f"[FAIL]  {year}-{month:02d}: {e}", file=sys.stderr)
 

@@ -167,12 +167,18 @@ SELECT add_compression_policy('pw_weather_log', compress_after => interval '7 da
 
 -- Checkpoint table for the one-time InfluxDB -> TimescaleDB historical
 -- migration (timescaledb/migrate/*.py). Not a hypertable -- tiny, low churn.
+-- "source" identifies which InfluxDB instance a checkpoint came from (see
+-- migrate_common.get_config()'s source_key) -- the migration source is a
+-- runtime prompt (setup.sh can point it at an external InfluxDB server, not
+-- just this stack's own container), so a checkpoint from one source must
+-- never be read as "done" for a different source re-run.
 CREATE TABLE IF NOT EXISTS migration_progress (
     source_measurement text NOT NULL,
+    source text NOT NULL DEFAULT '',
     year integer NOT NULL,
     month integer NOT NULL,
     status text NOT NULL DEFAULT 'pending',
     row_count integer,
     migrated_at timestamptz,
-    PRIMARY KEY (source_measurement, year, month)
+    PRIMARY KEY (source_measurement, source, year, month)
 );
