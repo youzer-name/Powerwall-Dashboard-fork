@@ -952,60 +952,78 @@ if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
     docker exec -u postgres timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /schema.sql'
 
     echo ""
-    echo "TimescaleDB can optionally import InfluxDB history."
-    if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
-        echo "(This defaults to this stack's own InfluxDB container, but you can"
-        echo " point it at a different/external InfluxDB server instead -- e.g. if"
-        echo " you're standing up this stack fresh to evaluate TimescaleDB and want"
-        echo " to backfill it from an existing InfluxDB history running elsewhere.)"
+    SKIP_MIGRATE_PROMPT=$(grep -E "^PWD_SKIP_INFLUX_MIGRATE_PROMPT=" "${COMPOSE_ENV_FILE}" 2>/dev/null | cut -d= -f2 | tr -d '"')
+    if [ "${SKIP_MIGRATE_PROMPT}" = "1" ]; then
+        echo "Skipping InfluxDB -> TimescaleDB migration prompt (previously disabled)."
+        echo "To be asked again, remove/reset PWD_SKIP_INFLUX_MIGRATE_PROMPT in ${COMPOSE_ENV_FILE}."
     else
-        echo "(Your InfluxDB container isn't part of this run -- e.g. if TimescaleDB"
-        echo " is being set up as a separate/test stack -- but if you have existing"
-        echo " InfluxDB data on this host, or on another host entirely, it can still"
-        echo " be migrated.)"
-    fi
-    read -r -p "Migrate existing InfluxDB data into TimescaleDB now? [y/N] " response
-    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-        read -r -p "InfluxDB host or IP [influxdb]: " input
-        MIGRATE_INFLUX_HOST="${input:-influxdb}"
-        read -r -p "InfluxDB port [8086]: " input
-        MIGRATE_INFLUX_PORT="${input:-8086}"
-        read -r -p "InfluxDB database name [powerwall]: " input
-        MIGRATE_INFLUX_DB="${input:-powerwall}"
-        read -r -p "InfluxDB username (leave blank if none): " input
-        MIGRATE_INFLUX_USER="${input}"
-        MIGRATE_INFLUX_PASSWORD=""
-        if [ -n "${MIGRATE_INFLUX_USER}" ]; then
-            read -r -s -p "InfluxDB password: " input
-            echo ""
-            MIGRATE_INFLUX_PASSWORD="${input}"
+        echo "TimescaleDB can optionally import InfluxDB history."
+        if [ ${INFLUXDB_ACTIVE} -eq 1 ]; then
+            echo "(This defaults to this stack's own InfluxDB container, but you can"
+            echo " point it at a different/external InfluxDB server instead -- e.g. if"
+            echo " you're standing up this stack fresh to evaluate TimescaleDB and want"
+            echo " to backfill it from an existing InfluxDB history running elsewhere.)"
+        else
+            echo "(Your InfluxDB container isn't part of this run -- e.g. if TimescaleDB"
+            echo " is being set up as a separate/test stack -- but if you have existing"
+            echo " InfluxDB data on this host, or on another host entirely, it can still"
+            echo " be migrated.)"
         fi
+        read -r -p "Migrate existing InfluxDB data into TimescaleDB now? [y/N] (or 'never' to stop asking) " response
+        case "${response}" in
+            [yY]|[yY][eE][sS])
+                read -r -p "InfluxDB host or IP [influxdb]: " input
+                MIGRATE_INFLUX_HOST="${input:-influxdb}"
+                read -r -p "InfluxDB port [8086]: " input
+                MIGRATE_INFLUX_PORT="${input:-8086}"
+                read -r -p "InfluxDB database name [powerwall]: " input
+                MIGRATE_INFLUX_DB="${input:-powerwall}"
+                read -r -p "InfluxDB username (leave blank if none): " input
+                MIGRATE_INFLUX_USER="${input}"
+                MIGRATE_INFLUX_PASSWORD=""
+                if [ -n "${MIGRATE_INFLUX_USER}" ]; then
+                    read -r -s -p "InfluxDB password: " input
+                    echo ""
+                    MIGRATE_INFLUX_PASSWORD="${input}"
+                fi
 
-        NETWORK=$(docker inspect timescaledb --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
-        echo "Running migration (this can take a while for large histories)..."
-        # Credentials go through a temp --env-file (deleted right after) rather
-        # than -e on the command line, so the InfluxDB password doesn't sit in
-        # plaintext in `docker inspect`/`ps` output.
-        INFLUX_MIGRATE_ENV=$(mktemp)
-        chmod 600 "${INFLUX_MIGRATE_ENV}"
-        {
-            echo "INFLUX_HOST=${MIGRATE_INFLUX_HOST}"
-            echo "INFLUX_PORT=${MIGRATE_INFLUX_PORT}"
-            echo "INFLUX_DB=${MIGRATE_INFLUX_DB}"
-            echo "INFLUX_USER=${MIGRATE_INFLUX_USER}"
-            echo "INFLUX_PASSWORD=${MIGRATE_INFLUX_PASSWORD}"
-        } > "${INFLUX_MIGRATE_ENV}"
-        docker run --rm -it \
-            --network "${NETWORK}" \
-            -v "$(pwd)/timescaledb:/timescaledb:ro" \
-            --env-file "${TIMESCALEDB_ENV_FILE}" \
-            --env-file "${INFLUX_MIGRATE_ENV}" \
-            -e PGHOST=timescaledb \
-            -e PGPORT=5432 \
-            -e TZ="$(cat tz)" \
-            python:3-alpine sh -c "apk add --no-cache --quiet postgresql-client && pip install --quiet requests psycopg2-binary && python3 /timescaledb/migrate/run_all.py"
-        rm -f "${INFLUX_MIGRATE_ENV}"
-        echo "Migration complete."
+                NETWORK=$(docker inspect timescaledb --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+                echo "Running migration (this can take a while for large histories)..."
+                # Credentials go through a temp --env-file (deleted right after) rather
+                # than -e on the command line, so the InfluxDB password doesn't sit in
+                # plaintext in `docker inspect`/`ps` output.
+                INFLUX_MIGRATE_ENV=$(mktemp)
+                chmod 600 "${INFLUX_MIGRATE_ENV}"
+                {
+                    echo "INFLUX_HOST=${MIGRATE_INFLUX_HOST}"
+                    echo "INFLUX_PORT=${MIGRATE_INFLUX_PORT}"
+                    echo "INFLUX_DB=${MIGRATE_INFLUX_DB}"
+                    echo "INFLUX_USER=${MIGRATE_INFLUX_USER}"
+                    echo "INFLUX_PASSWORD=${MIGRATE_INFLUX_PASSWORD}"
+                } > "${INFLUX_MIGRATE_ENV}"
+                docker run --rm -it \
+                    --network "${NETWORK}" \
+                    -v "$(pwd)/timescaledb:/timescaledb:ro" \
+                    --env-file "${TIMESCALEDB_ENV_FILE}" \
+                    --env-file "${INFLUX_MIGRATE_ENV}" \
+                    -e PGHOST=timescaledb \
+                    -e PGPORT=5432 \
+                    -e TZ="$(cat tz)" \
+                    python:3-alpine sh -c "apk add --no-cache --quiet postgresql-client && pip install --quiet requests psycopg2-binary && python3 /timescaledb/migrate/run_all.py"
+                rm -f "${INFLUX_MIGRATE_ENV}"
+                echo "Migration complete."
+                ;;
+            [nN][eE][vV][eE][rR])
+                if grep -q "^PWD_SKIP_INFLUX_MIGRATE_PROMPT=" "${COMPOSE_ENV_FILE}"; then
+                    sed -i.bak "s@^PWD_SKIP_INFLUX_MIGRATE_PROMPT=.*@PWD_SKIP_INFLUX_MIGRATE_PROMPT=\"1\"@g" "${COMPOSE_ENV_FILE}"
+                else
+                    echo "PWD_SKIP_INFLUX_MIGRATE_PROMPT=\"1\"" >> "${COMPOSE_ENV_FILE}"
+                fi
+                echo "Won't ask again. To re-enable, remove/reset PWD_SKIP_INFLUX_MIGRATE_PROMPT in ${COMPOSE_ENV_FILE}."
+                ;;
+            *)
+                ;;
+        esac
     fi
 fi
 
