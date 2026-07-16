@@ -10,6 +10,7 @@ datasources:
     secureJsonData:
       password: $__env{POSTGRES_PASSWORD}
     jsonData:
+      database: $__env{POSTGRES_DB}
       sslmode: disable
       postgresVersion: 1600
       timescaledb: true
