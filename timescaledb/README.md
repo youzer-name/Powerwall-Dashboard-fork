@@ -325,17 +325,25 @@ aggregate scripts.
 
 **Grafana**
 - Right after first `docker compose up` (or a full stack restart), Grafana
-  can render panels with "you do not currently have a default database
+  could render panels with "you do not currently have a default database
   configured for this data source" even though the datasource is correctly
-  provisioned with a database. This is Grafana serving dashboard requests
-  before the postgres datasource plugin has finished settling in against a
-  freshly-started TimescaleDB, not a real config problem — it clears on its
-  own within the container's `start_period`/first health check, no action
-  needed beyond a page refresh. Confirmed via a from-scratch isolated
-  Grafana+TimescaleDB instance: every query in `dashboard-timescaledb.json`
-  (including the ones this error was reported against) executes cleanly
-  once the datasource has settled — the dashboard JSON itself is not at
-  fault.
+  provisioned with a database, and it did *not* reliably clear on its own —
+  confirmed against a real installation, where it recurred on every restart
+  and required manually opening the datasource and clicking Save & Test to
+  clear (first for some panels, then the rest as they refreshed). Root
+  cause: `grafana` isn't gated on `timescaledb` in `powerwall.yml` (it has to
+  start regardless of which datastore profile is active), so Grafana can
+  start and make its first connection attempt before TimescaleDB is done
+  starting up; once that first attempt fails, the postgres datasource
+  plugin's cached connection doesn't get retried until the datasource's
+  settings change (which is what Save & Test forces). Fixed by giving
+  `grafana` a `depends_on: timescaledb: condition: service_healthy,
+  required: false` — `required: false` makes it a no-op when TimescaleDB
+  isn't in the active profile set, but when it is, Grafana now waits for
+  TimescaleDB's `pg_isready` healthcheck before starting, so the race never
+  happens. Verified with an isolated Grafana+TimescaleDB compose stack: the
+  very first query after `docker compose up`, with no restart and no manual
+  Save & Test, succeeds immediately.
 
 **Timestamps / timezones**
 - `AT TIME ZONE` on an already-`timestamptz` value vs. a naive `timestamp`

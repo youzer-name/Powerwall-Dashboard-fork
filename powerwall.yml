@@ -111,6 +111,21 @@ services:
         env_file:
             - grafana.env
             - timescaledb.env
+        # "required: false" lets this resolve to a no-op when timescaledb isn't
+        # in the active profile set (InfluxDB-only installs) instead of Compose
+        # erroring over a dependency on a service that doesn't exist in this
+        # run. When it *is* active, this blocks Grafana's startup -- and so its
+        # first connection attempt -- until TimescaleDB's pg_isready healthcheck
+        # passes. Without it, Grafana starts in parallel with TimescaleDB, its
+        # postgres datasource plugin's first connection attempt can land before
+        # Postgres is accepting connections, and that failure sticks (dashboards
+        # show "you do not currently have a default database configured for
+        # this data source" until someone manually hits Save & Test on the
+        # datasource) rather than clearing on its own.
+        depends_on:
+            timescaledb:
+                condition: service_healthy
+                required: false
         healthcheck:
             test: curl -f http://grafana:"${GF_SERVER_HTTP_PORT:-9000}"/api/health || exit 1
             interval: 30s
