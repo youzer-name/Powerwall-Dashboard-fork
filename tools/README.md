@@ -100,3 +100,9 @@ This tool automates both the Powerwall's operating mode (self-powered/time-based
 * Author: [@goodoldme](https://github.com/goodoldme)
 * [Details and Instructions](switch-mode/)
 * Scripts: [switch-mode.zsh](switch-mode/switch-mode.zsh), [switch-mode.sh](switch-mode/switch-mode.sh)
+
+## pgAdmin for TimescaleDB
+
+An optional [pgAdmin](https://www.pgadmin.org/) service, added to the stack via `powerwall.extend.yml`, for browsing/querying the TimescaleDB datastore directly -- inspecting tables, running ad hoc SQL, checking compression/chunk status, etc. Not part of `setup.sh`; entirely opt-in for advanced users.
+
+* [Details and Instructions](pgadmin/)
