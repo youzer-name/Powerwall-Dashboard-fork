@@ -20,6 +20,8 @@ influxdb.env
 powerwall.extend.yml
 pypowerwall.env
 telegraf.local
+timescaledb.env
+grafana/provisions/datasources/sunandmoon.yml
 
 # Auth files
 .auth/
