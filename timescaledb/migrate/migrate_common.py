@@ -2,7 +2,7 @@
 Shared helpers for the one-time InfluxDB -> TimescaleDB historical migration
 scripts (migrate_*.py in this directory).
 
-Connection details are never hardcoded (see CLAUDE.md / timescaledb/README.md):
+Connection details are never hardcoded (see timescaledb/README.md):
 the TimescaleDB side always comes from this stack's own env vars (these
 scripts run inside the compose network, where POSTGRES_USER/PASSWORD/DB and
 PGHOST/PGPORT are already correct); the InfluxDB side defaults to this
@@ -100,8 +100,8 @@ def find_earliest_month(config, source_measurement):
     """
     Query InfluxDB for the actual earliest point in source_measurement,
     instead of assuming a fixed cutoff year -- every installation's history
-    starts at a different date (see CLAUDE.md: don't bake in as-built
-    assumptions). Falls back to 10 years back if the measurement is empty
+    starts at a different date, so don't bake in as-built assumptions.
+    Falls back to 10 years back if the measurement is empty
     (nothing to migrate, the walk-back loop will just find 0 rows every
     month and finish immediately).
     """

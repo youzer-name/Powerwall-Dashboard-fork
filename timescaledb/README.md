@@ -324,26 +324,30 @@ aggregate scripts.
   run needs it.
 
 **Grafana**
-- Right after first `docker compose up` (or a full stack restart), Grafana
-  could render panels with "you do not currently have a default database
-  configured for this data source" even though the datasource is correctly
-  provisioned with a database, and it did *not* reliably clear on its own —
+- Grafana could render panels with "you do not currently have a default
+  database configured for this data source" even though the datasource was
+  correctly provisioned with a database, and it did *not* clear on its own —
   confirmed against a real installation, where it recurred on every restart
   and required manually opening the datasource and clicking Save & Test to
   clear (first for some panels, then the rest as they refreshed). Root
-  cause: `grafana` isn't gated on `timescaledb` in `powerwall.yml` (it has to
-  start regardless of which datastore profile is active), so Grafana can
-  start and make its first connection attempt before TimescaleDB is done
-  starting up; once that first attempt fails, the postgres datasource
-  plugin's cached connection doesn't get retried until the datasource's
-  settings change (which is what Save & Test forces). Fixed by giving
-  `grafana` a `depends_on: timescaledb: condition: service_healthy,
-  required: false` — `required: false` makes it a no-op when TimescaleDB
-  isn't in the active profile set, but when it is, Grafana now waits for
-  TimescaleDB's `pg_isready` healthcheck before starting, so the race never
-  happens. Verified with an isolated Grafana+TimescaleDB compose stack: the
-  very first query after `docker compose up`, with no restart and no manual
-  Save & Test, succeeds immediately.
+  cause: Grafana's postgres datasource plugin has a legacy top-level
+  `database` field (what the backend actually uses to run queries) and a
+  separate, currently-documented `jsonData.database` field — only
+  `jsonData.database` is checked by the *frontend's* client-side validation
+  before it'll render a panel, so a provisioning file that only sets the
+  top-level field runs queries fine but still shows the "no default
+  database" error every time the page loads fresh. Fixed by also setting
+  `database` under `jsonData` in
+  `grafana/provisions/datasources/timescaledb.yml`, alongside the existing
+  top-level `database` field. Verified against a real installation: the
+  error no longer appears after a full stack restart, with no manual
+  Save & Test needed.
+- Separately, `grafana` also has a `depends_on: timescaledb: condition:
+  service_healthy, required: false` in `powerwall.yml` — `required: false`
+  makes it a no-op when TimescaleDB isn't in the active profile set, but
+  when it is, Grafana waits for TimescaleDB's `pg_isready` healthcheck
+  before starting. This closes a real (but separate) startup-race window;
+  it was not, on its own, the fix for the "no default database" error above.
 
 **Timestamps / timezones**
 - `AT TIME ZONE` on an already-`timestamptz` value vs. a naive `timestamp`
