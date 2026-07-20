@@ -158,11 +158,17 @@ services:
             start_period: 60s
 
     timescaledb:
+        # This stack's own bundled TimescaleDB container -- part of the
+        # "timescaledb-local" profile so it can be left out when
+        # PWD_TIMESCALEDB_MODE=external points telegraf-timescale/aggregate-cron/
+        # grafana/weather411 at an existing server instead (see
+        # timescaledb/README.md). Those services are on the separate
+        # "timescaledb" profile and stay active either way.
         image: timescale/timescaledb:latest-pg16
         container_name: timescaledb
         hostname: timescaledb
         restart: unless-stopped
-        profiles: ["timescaledb"]
+        profiles: ["timescaledb-local"]
         volumes:
             - type: bind
               source: ./timescaledb/data
@@ -206,8 +212,16 @@ services:
         env_file:
             - timescaledb.env
         depends_on:
-            - timescaledb
-            - pypowerwall
+            # "required: false" lets this resolve to a no-op when the bundled
+            # timescaledb container isn't in the active profile set (external
+            # server mode) instead of Compose erroring over a dependency on a
+            # service that doesn't exist in this run. When it *is* active,
+            # this waits for its pg_isready healthcheck, same as grafana.
+            timescaledb:
+                condition: service_healthy
+                required: false
+            pypowerwall:
+                condition: service_started
         healthcheck:
             test: pgrep telegraf || exit 1
             interval: 30s
@@ -230,4 +244,6 @@ services:
         env_file:
             - timescaledb.env
         depends_on:
-            - timescaledb
+            timescaledb:
+                condition: service_healthy
+                required: false

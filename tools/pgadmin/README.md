@@ -38,18 +38,28 @@ that up yet.
 `powerwall.extend.yml` is gitignored, so your copy (and the credentials in
 it) survive `git pull` and `setup.sh` re-runs.
 
-## If you customized TimescaleDB's user/database name
+## If you customized TimescaleDB's user/database name, or use an existing server
 
 `servers.json` assumes the defaults from `timescaledb.env.sample`
-(`POSTGRES_USER=telegraf_powerwall`, `POSTGRES_DB=powerwall`). If you changed
-either in your own `timescaledb.env`, edit `tools/pgadmin/servers.json`'s
-`Username`/`MaintenanceDB` to match before starting pgAdmin -- it's only read
-on pgAdmin's *first* launch (when its internal config database is created),
-so edit it before step 3, or delete the `pgadmin-data` volume to re-trigger
-the import. `Host`/`Port` (`timescaledb`/`5432`) are the internal Docker
-network address and don't need to change even if you've overridden
-`TIMESCALEDB_PORTS` for external access (see below) -- that only affects the
-host-side port mapping, not container-to-container traffic.
+(`POSTGRES_USER=telegraf_powerwall`, `POSTGRES_DB=powerwall`, bundled
+container on `timescaledb:5432`). If you changed any of these -- including
+setup.sh's "existing server" TimescaleDB option (`PWD_TIMESCALEDB_MODE=
+external`, see `timescaledb/README.md`) -- edit `tools/pgadmin/servers.json`'s
+`Host`/`Port`/`Username`/`MaintenanceDB` to match your actual
+`timescaledb.env` (`TIMESCALEDB_HOST`/`TIMESCALEDB_PORT`/`POSTGRES_USER`/
+`POSTGRES_DB`) before starting pgAdmin. It's only read on pgAdmin's *first*
+launch (when its internal config database is created), so edit it before
+step 3, or delete the `pgadmin-data` volume to re-trigger the import.
+
+If you're on an external server that requires TLS (`TIMESCALEDB_SSLMODE`
+other than `disable`), also add `"sslmode": "<your mode>"` under
+`ConnectionParameters` in `servers.json` -- pgAdmin doesn't read
+`TIMESCALEDB_SSLMODE` automatically.
+
+If pgAdmin needs to reach that server (bundled or external) from *outside*
+the Docker host, note that pgAdmin always connects to it over the internal
+Docker network, not through `TIMESCALEDB_PORTS` -- that variable only affects
+host-side access, and doesn't need to change for pgAdmin to work.
 
 ## Changing the port, or opening it up beyond localhost
 

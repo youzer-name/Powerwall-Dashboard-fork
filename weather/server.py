@@ -142,9 +142,12 @@ if os.path.exists(CONFIGFILE):
         TSNAME = config["TimescaleDB"]["DB"]
         TSUSER = config["TimescaleDB"]["USER"]
         TSPASS = config["TimescaleDB"]["PASSWORD"]
+        # Older configs predate this setting -- fall back to "disable" (the
+        # bundled container's mode) rather than psycopg2's own "prefer".
+        TSSSLMODE = config["TimescaleDB"].get("SSLMODE", "disable")
     else:
         TSDB = False
-        TSHOST = TSNAME = TSUSER = TSPASS = ""
+        TSHOST = TSNAME = TSUSER = TSPASS = TSSSLMODE = ""
         TSPORT = 0
 else:
     # No config file - Display Error
@@ -337,7 +340,8 @@ def fetchWeather():
                                 else:
                                     rows.append((ts, key, val, None))
                             conn = psycopg2.connect(host=TSHOST, port=TSPORT,
-                                dbname=TSNAME, user=TSUSER, password=TSPASS)
+                                dbname=TSNAME, user=TSUSER, password=TSPASS,
+                                sslmode=TSSSLMODE)
                             with conn.cursor() as cur:
                                 psycopg2.extras.execute_values(
                                     cur,

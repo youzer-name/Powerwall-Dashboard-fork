@@ -50,6 +50,57 @@ Switching to TimescaleDB-only on an existing install stops InfluxDB from
 receiving new data but never deletes its container or `influxdb/` data
 directory — switch back any time by re-running `setup.sh`.
 
+### Bundled container vs. an existing server
+
+The `timescaledb` profile above only covers `telegraf-timescale` and
+`aggregate-cron` — the services that *use* TimescaleDB. Whether they talk to
+this stack's own container or to a TimescaleDB/PostgreSQL server you already
+run (e.g. one already running in a homelab) is a second, independent choice,
+asked right after datastore selection whenever TimescaleDB is active:
+
+| Selection | `COMPOSE_PROFILES` gets | `timescaledb.env` |
+|-----------|--------------------------|--------------------|
+| Bundled container (default) | `...,timescaledb-local` appended | `TIMESCALEDB_HOST=timescaledb`, `TIMESCALEDB_PORT=5432`, `TIMESCALEDB_SSLMODE=disable` |
+| Existing server | unchanged (no `timescaledb-local`) | `TIMESCALEDB_HOST`/`PORT`/`SSLMODE` set from your prompted answers |
+
+The bundled `timescaledb` container itself sits on its own `timescaledb-local`
+profile (separate from `timescaledb`) specifically so it can be left out of
+`COMPOSE_PROFILES` in external mode — `telegraf-timescale`/`aggregate-cron`/
+`grafana`/`weather411` all read `TIMESCALEDB_HOST`/`TIMESCALEDB_PORT`/
+`TIMESCALEDB_SSLMODE` from `timescaledb.env` rather than assuming the
+`timescaledb` service name, so they work identically either way.
+
+**Prerequisites for an existing server** (setup.sh prints these at the
+prompt too):
+- TimescaleDB 2.x+ on PostgreSQL 13+ — the bundled image is pinned to
+  `timescale/timescaledb:latest-pg16`, which is what's actually tested, but
+  nothing in `schema.sql` or the aggregate scripts uses anything newer than
+  stable 2.x features.
+- The `timescaledb` extension installed on the server and either already
+  created in the target database, or creatable by the connecting user (i.e.
+  that user is a superuser, or an admin has already run
+  `CREATE EXTENSION IF NOT EXISTS timescaledb;`). This rules out managed
+  Postgres offerings that don't support the extension at all (e.g. plain AWS
+  RDS) — self-hosted/homelab TimescaleDB is the assumed case.
+- The connecting user needs privileges to create tables, hypertables, and
+  compression policies in the target database.
+- Network reachability from this Docker host to `host:port` — same as any
+  other container-to-external-service dependency.
+- If the server requires TLS, set `TIMESCALEDB_SSLMODE` (in `timescaledb.env`,
+  or at the setup.sh prompt) to `require`/`verify-ca`/`verify-full` as
+  appropriate — the bundled container never speaks TLS, so this only matters
+  for external mode.
+
+Switching between bundled and external (either direction, via re-running
+`setup.sh`) doesn't touch existing data in either place — `./timescaledb/data`
+(the bundled container's volume) and the external server's own data are both
+left alone regardless of which is currently active. `schema.sql` is
+idempotent and gets (re-)applied to whichever one is active on every run.
+
+`tools/pgadmin` (optional pgAdmin add-on) has its own `servers.json` with a
+hardcoded `Host`/`Port` that needs manual editing to match an external server
+— see `tools/pgadmin/README.md`.
+
 ### Table shape: wide vs. narrow (long format)
 
 Two shapes exist in the aggregate tier, chosen deliberately per table:
@@ -244,7 +295,14 @@ a real `setup.sh` option required removing those assumptions:
 - Connection details moved from hardcoded LAN hostnames/ports to internal
   Docker Compose service names (`timescaledb`, `pypowerwall`, `weather411`)
   resolved via Docker's own DNS, and to env vars for the migration tool (see
-  `migrate_common.get_config()`) instead of assumed addresses.
+  `migrate_common.get_config()`) instead of assumed addresses. TimescaleDB's
+  own host/port/SSL mode are themselves now a variable
+  (`TIMESCALEDB_HOST`/`TIMESCALEDB_PORT`/`TIMESCALEDB_SSLMODE` in
+  `timescaledb.env`, templated into `telegraf-timescale.conf`,
+  `grafana/provisions/datasources/timescaledb.yml`, `cron-entrypoint.sh`, and
+  `weather411.conf`) rather than a hardcoded `timescaledb` service name, so
+  the same generalized config also supports pointing at a genuinely external
+  server — see "Bundled container vs. an existing server" above.
 - `migrate_common.find_earliest_month()` queries InfluxDB for the actual
   earliest data point instead of assuming a fixed cutoff year — every
   installation's history starts on a different date.

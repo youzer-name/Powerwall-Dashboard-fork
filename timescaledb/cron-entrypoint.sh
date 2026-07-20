@@ -7,9 +7,10 @@
 set -u
 
 TZ_VALUE="${TZ:-UTC}"
-PGHOST="${PGHOST:-timescaledb}"
-PGPORT="${PGPORT:-5432}"
+PGHOST="${TIMESCALEDB_HOST:-timescaledb}"
+PGPORT="${TIMESCALEDB_PORT:-5432}"
 export PGPASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+export PGSSLMODE="${TIMESCALEDB_SSLMODE:-disable}"
 
 SQL_DIR="/timescaledb"
 AGG_DIR="${SQL_DIR}/aggregate"

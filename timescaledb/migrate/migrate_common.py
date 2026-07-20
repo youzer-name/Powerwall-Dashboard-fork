@@ -4,11 +4,12 @@ scripts (migrate_*.py in this directory).
 
 Connection details are never hardcoded (see timescaledb/README.md):
 the TimescaleDB side always comes from this stack's own env vars (these
-scripts run inside the compose network, where POSTGRES_USER/PASSWORD/DB and
-PGHOST/PGPORT are already correct); the InfluxDB side defaults to this
-stack's own "influxdb" service but can be overridden via env vars or an
-interactive prompt, since a user may be migrating from a different/external
-InfluxDB instance.
+scripts run inside the compose network, where POSTGRES_USER/PASSWORD/DB,
+PGHOST/PGPORT, and PGSSLMODE are already correct -- setup.sh sets these from
+timescaledb.env, pointing at either the bundled container or an existing
+server); the InfluxDB side defaults to this stack's own "influxdb" service
+but can be overridden via env vars or an interactive prompt, since a user may
+be migrating from a different/external InfluxDB instance.
 """
 
 import os
@@ -38,13 +39,14 @@ def get_config():
     pg_db = os.environ.get("POSTGRES_DB", "powerwall")
     pg_user = os.environ.get("POSTGRES_USER", "telegraf_powerwall")
     pg_password = os.environ.get("POSTGRES_PASSWORD", "")
+    pg_sslmode = os.environ.get("PGSSLMODE", "disable")
 
     return {
         "influx_url": f"http://{influx_host}:{influx_port}/query",
         "influx_db": influx_db,
         "influx_user": influx_user,
         "influx_password": influx_password,
-        "pg_dsn": f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_password}",
+        "pg_dsn": f"host={pg_host} port={pg_port} dbname={pg_db} user={pg_user} password={pg_password} sslmode={pg_sslmode}",
         # Identifies which InfluxDB instance this run is reading from, so a
         # migration checkpoint from one source is never mistaken for "done"
         # against a different source (see migration_progress in schema.sql).

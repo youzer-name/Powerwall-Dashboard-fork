@@ -720,6 +720,131 @@ if [ ! -f ${TIMESCALEDB_ENV_FILE} ]; then
     sed -i.bak "s@^POSTGRES_PASSWORD=.*@POSTGRES_PASSWORD=${TSDB_PASSWORD}@g" "${TIMESCALEDB_ENV_FILE}"
 fi
 
+# Back-fill TIMESCALEDB_HOST/PORT/SSLMODE into a timescaledb.env created
+# before this feature existed, defaulting to the bundled container so
+# existing installs behave exactly as before until they opt into external.
+grep -q "^TIMESCALEDB_HOST=" "${TIMESCALEDB_ENV_FILE}" || echo "TIMESCALEDB_HOST=timescaledb" >> "${TIMESCALEDB_ENV_FILE}"
+grep -q "^TIMESCALEDB_PORT=" "${TIMESCALEDB_ENV_FILE}" || echo "TIMESCALEDB_PORT=5432" >> "${TIMESCALEDB_ENV_FILE}"
+grep -q "^TIMESCALEDB_SSLMODE=" "${TIMESCALEDB_ENV_FILE}" || echo "TIMESCALEDB_SSLMODE=disable" >> "${TIMESCALEDB_ENV_FILE}"
+
+# When TimescaleDB is active this run, ask whether to use this stack's own
+# bundled container or connect to an existing PostgreSQL/TimescaleDB server
+# (e.g. one already running in a homelab). Mirrors the datastore prompt above:
+# always asked, defaults to the current setting on a blank answer.
+if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
+    CURRENT_TSDB_MODE=$(grep -E "^PWD_TIMESCALEDB_MODE=" "${COMPOSE_ENV_FILE}" 2>/dev/null | cut -d= -f2 | tr -d '"')
+    if [ -z "${CURRENT_TSDB_MODE}" ]; then
+        CURRENT_TSDB_MODE="bundled"
+    fi
+    echo "Select TimescaleDB server:"
+    echo ""
+    case "${CURRENT_TSDB_MODE}" in
+        "external") echo "Current: [2] Existing server" ;;
+        *) echo "Current: [1] Bundled container" ;;
+    esac
+    echo ""
+    echo " 1 - Bundled container  (this stack runs its own TimescaleDB) - Default"
+    echo " 2 - Existing server    (connect to a TimescaleDB/PostgreSQL server you already run)"
+    echo ""
+    while :; do
+        read -r -p "Select [1/2] (leave blank to keep current): " response
+        if [ -z "${response}" ]; then
+            TSDB_MODE="${CURRENT_TSDB_MODE}"
+            break
+        elif [ "${response}" == "1" ]; then
+            TSDB_MODE="bundled"
+            break
+        elif [ "${response}" == "2" ]; then
+            TSDB_MODE="external"
+            break
+        else
+            continue
+        fi
+    done
+    if grep -q "^PWD_TIMESCALEDB_MODE=" "${COMPOSE_ENV_FILE}"; then
+        sed -i.bak "s@^PWD_TIMESCALEDB_MODE=.*@PWD_TIMESCALEDB_MODE=\"${TSDB_MODE}\"@g" "${COMPOSE_ENV_FILE}"
+    else
+        echo "PWD_TIMESCALEDB_MODE=\"${TSDB_MODE}\"" >> "${COMPOSE_ENV_FILE}"
+    fi
+
+    if [ "${TSDB_MODE}" == "external" ]; then
+        echo ""
+        echo "Prerequisites for an existing server (see timescaledb/README.md):"
+        echo " - TimescaleDB 2.x+ (PostgreSQL 13+), with the timescaledb extension"
+        echo "   already installed and either already created, or creatable by the"
+        echo "   user below (i.e. that user is a superuser, or an admin has already"
+        echo "   run CREATE EXTENSION IF NOT EXISTS timescaledb;)"
+        echo " - The user below needs privileges to create tables/hypertables/"
+        echo "   compression policies in the target database"
+        echo " - Reachable on the network from this Docker host"
+        echo ""
+        CUR_HOST=$(grep -E "^TIMESCALEDB_HOST=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+        [ "${CUR_HOST}" == "timescaledb" ] && CUR_HOST=""
+        CUR_PORT=$(grep -E "^TIMESCALEDB_PORT=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+        CUR_DB=$(grep -E "^POSTGRES_DB=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+        CUR_USER=$(grep -E "^POSTGRES_USER=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+        CUR_SSLMODE=$(grep -E "^TIMESCALEDB_SSLMODE=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+
+        TSDB_HOST=""
+        while [ -z "${TSDB_HOST}" ]; do
+            read -r -p "TimescaleDB host or IP${CUR_HOST:+ [${CUR_HOST}]}: " input
+            TSDB_HOST="${input:-${CUR_HOST}}"
+        done
+        read -r -p "TimescaleDB port [${CUR_PORT:-5432}]: " input
+        TSDB_PORT="${input:-${CUR_PORT:-5432}}"
+        read -r -p "Database name [${CUR_DB:-powerwall}]: " input
+        TSDB_DBNAME="${input:-${CUR_DB:-powerwall}}"
+        read -r -p "Username [${CUR_USER:-telegraf_powerwall}]: " input
+        TSDB_USERNAME="${input:-${CUR_USER:-telegraf_powerwall}}"
+        TSDB_PASSWORD_EXT=""
+        while [ -z "${TSDB_PASSWORD_EXT}" ]; do
+            read -r -s -p "Password (leave blank to keep current, if any): " input
+            echo ""
+            if [ -n "${input}" ]; then
+                TSDB_PASSWORD_EXT="${input}"
+            elif [ "${CURRENT_TSDB_MODE}" == "external" ]; then
+                TSDB_PASSWORD_EXT=$(grep -E "^POSTGRES_PASSWORD=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+            else
+                echo "Password is required the first time you switch to an existing server."
+            fi
+        done
+        read -r -p "SSL mode [${CUR_SSLMODE:-disable}] (disable/allow/prefer/require/verify-ca/verify-full): " input
+        TSDB_SSLMODE="${input:-${CUR_SSLMODE:-disable}}"
+
+        sed -i.bak \
+            -e "s@^TIMESCALEDB_HOST=.*@TIMESCALEDB_HOST=${TSDB_HOST}@g" \
+            -e "s@^TIMESCALEDB_PORT=.*@TIMESCALEDB_PORT=${TSDB_PORT}@g" \
+            -e "s@^TIMESCALEDB_SSLMODE=.*@TIMESCALEDB_SSLMODE=${TSDB_SSLMODE}@g" \
+            -e "s@^POSTGRES_DB=.*@POSTGRES_DB=${TSDB_DBNAME}@g" \
+            -e "s@^POSTGRES_USER=.*@POSTGRES_USER=${TSDB_USERNAME}@g" \
+            -e "s@^POSTGRES_PASSWORD=.*@POSTGRES_PASSWORD=${TSDB_PASSWORD_EXT}@g" \
+            "${TIMESCALEDB_ENV_FILE}"
+    else
+        # Switching (back) to the bundled container -- reset connection
+        # details to it regardless of any prior external server config.
+        # POSTGRES_USER/DB/PASSWORD are left as-is: they're what the bundled
+        # container's own data volume was (or will be) initialized with.
+        sed -i.bak \
+            -e "s@^TIMESCALEDB_HOST=.*@TIMESCALEDB_HOST=timescaledb@g" \
+            -e "s@^TIMESCALEDB_PORT=.*@TIMESCALEDB_PORT=5432@g" \
+            -e "s@^TIMESCALEDB_SSLMODE=.*@TIMESCALEDB_SSLMODE=disable@g" \
+            "${TIMESCALEDB_ENV_FILE}"
+    fi
+
+    # Re-derive COMPOSE_PROFILES now that TSDB_MODE is known: only bring up
+    # the bundled timescaledb container (its own "timescaledb-local" profile)
+    # when it's actually going to be used.
+    COMPOSE_PROFILES_VALUE="${DATASTORE}"
+    if [ "${TSDB_MODE}" == "bundled" ]; then
+        COMPOSE_PROFILES_VALUE="${COMPOSE_PROFILES_VALUE},timescaledb-local"
+    fi
+    sed -i.bak "s@^COMPOSE_PROFILES=.*@COMPOSE_PROFILES=\"${COMPOSE_PROFILES_VALUE}\"@g" "${COMPOSE_ENV_FILE}"
+    echo ""
+    echo "TimescaleDB server: ${TSDB_MODE}"
+    echo "-----------------------------------------"
+    echo ""
+fi
+
 # Create Grafana Settings if missing (required in 2.4.0)
 if [ ! -f ${GF_ENV_FILE} ]; then
     cp "${GF_ENV_FILE}.sample" "${GF_ENV_FILE}"
@@ -803,21 +928,33 @@ if [ -f weather/weather411.conf ]; then
     if ! grep -q "^\[TimescaleDB\]" weather/weather411.conf; then
         sed -n '/^\[TimescaleDB\]/,/^$/p' weather/weather411.conf.sample >> weather/weather411.conf
     fi
+    TSDB_HOST=$(grep -E "^TIMESCALEDB_HOST=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_PORT=$(grep -E "^TIMESCALEDB_PORT=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
     TSDB_USER=$(grep -E "^POSTGRES_USER=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
     TSDB_PASS=$(grep -E "^POSTGRES_PASSWORD=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
     TSDB_DB=$(grep -E "^POSTGRES_DB=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_SSLMODE=$(grep -E "^TIMESCALEDB_SSLMODE=" "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
     awk -v influx_enable="$([ ${INFLUXDB_ACTIVE} -eq 1 ] && echo yes || echo no)" \
         -v tsdb_enable="$([ ${TIMESCALEDB_ACTIVE} -eq 1 ] && echo yes || echo no)" \
-        -v user="${TSDB_USER}" -v pass="${TSDB_PASS}" -v db="${TSDB_DB}" '
+        -v host="${TSDB_HOST}" -v port="${TSDB_PORT}" \
+        -v user="${TSDB_USER}" -v pass="${TSDB_PASS}" -v db="${TSDB_DB}" \
+        -v sslmode="${TSDB_SSLMODE}" '
         /^\[InfluxDB\]/ { section="influxdb" }
         /^\[TimescaleDB\]/ { section="timescaledb" }
-        /^\[/ && !/^\[InfluxDB\]/ && !/^\[TimescaleDB\]/ { section="" }
+        /^\[/ && !/^\[InfluxDB\]/ && !/^\[TimescaleDB\]/ {
+            if (section=="timescaledb" && !seen_sslmode) { print "SSLMODE = " sslmode; seen_sslmode=1 }
+            section=""
+        }
         section=="influxdb" && /^ENABLE =/ { $0 = "ENABLE = " influx_enable }
         section=="timescaledb" && /^ENABLE =/ { $0 = "ENABLE = " tsdb_enable }
+        section=="timescaledb" && /^HOST =/ { $0 = "HOST = " host }
+        section=="timescaledb" && /^PORT =/ { $0 = "PORT = " port }
         section=="timescaledb" && /^DB =/ { $0 = "DB = " db }
         section=="timescaledb" && /^USER =/ { $0 = "USER = " user }
         section=="timescaledb" && /^PASSWORD =/ { $0 = "PASSWORD = " pass }
+        section=="timescaledb" && /^SSLMODE =/ { $0 = "SSLMODE = " sslmode; seen_sslmode=1 }
         { print }
+        END { if (section=="timescaledb" && !seen_sslmode) print "SSLMODE = " sslmode }
     ' weather/weather411.conf > weather/weather411.conf.new && mv weather/weather411.conf.new weather/weather411.conf
 fi
 
@@ -940,16 +1077,32 @@ fi
 
 # Set up TimescaleDB
 if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
-    echo "Waiting for TimescaleDB to start..."
-    until docker exec timescaledb pg_isready -U "$(grep -E '^POSTGRES_USER=' ${TIMESCALEDB_ENV_FILE} | cut -d= -f2)" > /dev/null 2>&1; do
+    # Runs through the aggregate-cron container (always present in this
+    # profile, whether TimescaleDB is bundled or external) rather than execing
+    # into a "timescaledb" container directly -- that container doesn't exist
+    # in external mode. aggregate-cron's own entrypoint applies schema.sql on
+    # every start too, so this is belt-and-suspenders, but it gives immediate
+    # feedback here rather than waiting for that loop, and guarantees the
+    # schema exists before the migration prompt below runs.
+    TSDB_HOST=$(grep -E '^TIMESCALEDB_HOST=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_PORT=$(grep -E '^TIMESCALEDB_PORT=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_SSLMODE=$(grep -E '^TIMESCALEDB_SSLMODE=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_USER=$(grep -E '^POSTGRES_USER=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_PASS=$(grep -E '^POSTGRES_PASSWORD=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+    TSDB_DBNAME=$(grep -E '^POSTGRES_DB=' "${TIMESCALEDB_ENV_FILE}" | cut -d= -f2)
+
+    echo "Waiting for TimescaleDB (${TSDB_HOST}:${TSDB_PORT}) to be reachable..."
+    until docker exec -e PGHOST="${TSDB_HOST}" -e PGPORT="${TSDB_PORT}" -e PGSSLMODE="${TSDB_SSLMODE}" \
+        aggregate-cron pg_isready -U "${TSDB_USER}" -d "${TSDB_DBNAME}" > /dev/null 2>&1; do
         printf '.'
         sleep 5
     done
     echo " up!"
     sleep 2
     echo "Setup TimescaleDB schema... ('already exists' notices are harmless)"
-    docker cp timescaledb/schema.sql timescaledb:/schema.sql
-    docker exec -u postgres timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /schema.sql'
+    docker cp timescaledb/schema.sql aggregate-cron:/schema.sql
+    docker exec -e PGHOST="${TSDB_HOST}" -e PGPORT="${TSDB_PORT}" -e PGSSLMODE="${TSDB_SSLMODE}" \
+        -e PGPASSWORD="${TSDB_PASS}" aggregate-cron sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /schema.sql'
 
     echo ""
     SKIP_MIGRATE_PROMPT=$(grep -E "^PWD_SKIP_INFLUX_MIGRATE_PROMPT=" "${COMPOSE_ENV_FILE}" 2>/dev/null | cut -d= -f2 | tr -d '"')
@@ -987,7 +1140,11 @@ if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
                     MIGRATE_INFLUX_PASSWORD="${input}"
                 fi
 
-                NETWORK=$(docker inspect timescaledb --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+                # aggregate-cron (not "timescaledb") is used to find the compose
+                # network -- it's always present in this profile, whether
+                # TimescaleDB is bundled or external, unlike the "timescaledb"
+                # container itself.
+                NETWORK=$(docker inspect aggregate-cron --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
                 echo "Running migration (this can take a while for large histories)..."
                 # Credentials go through a temp --env-file (deleted right after) rather
                 # than -e on the command line, so the InfluxDB password doesn't sit in
@@ -1006,8 +1163,9 @@ if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
                     -v "$(pwd)/timescaledb:/timescaledb:ro" \
                     --env-file "${TIMESCALEDB_ENV_FILE}" \
                     --env-file "${INFLUX_MIGRATE_ENV}" \
-                    -e PGHOST=timescaledb \
-                    -e PGPORT=5432 \
+                    -e PGHOST="${TSDB_HOST}" \
+                    -e PGPORT="${TSDB_PORT}" \
+                    -e PGSSLMODE="${TSDB_SSLMODE}" \
                     -e TZ="$(cat tz)" \
                     python:3-alpine sh -c "apk add --no-cache --quiet postgresql-client && pip install --quiet requests psycopg2-binary && python3 /timescaledb/migrate/run_all.py"
                 rm -f "${INFLUX_MIGRATE_ENV}"
@@ -1091,8 +1249,8 @@ fi
 if [ ${TIMESCALEDB_ACTIVE} -eq 1 ]; then
 cat << EOF
 * TimescaleDB
-  - Host: 'timescaledb:5432'
-  - Database: 'powerwall' (see timescaledb.env)
+  - Host: '$(grep -E '^TIMESCALEDB_HOST=' ${TIMESCALEDB_ENV_FILE} | cut -d= -f2):$(grep -E '^TIMESCALEDB_PORT=' ${TIMESCALEDB_ENV_FILE} | cut -d= -f2)'
+  - Database: '$(grep -E '^POSTGRES_DB=' ${TIMESCALEDB_ENV_FILE} | cut -d= -f2)' (see timescaledb.env)
   - Click "Save & test" button
 
 EOF
